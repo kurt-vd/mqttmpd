@@ -317,6 +317,9 @@ int main(int argc, char *argv[])
 			mqtt_port = strtoul(str+1, NULL, 10);
 		}
 		break;
+	case 'p':
+		mpd_host = optarg;
+		break;
 
 	default:
 		fprintf(stderr, "unknown option '%c'", opt);
