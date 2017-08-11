@@ -169,7 +169,9 @@ playlist:
 		/* this is just a different way of loading a playlist,
 		 * goto is justified
 		 */
-		goto playlist;
+		if (!strchr(value, '/'))
+			/* only treat a playlist without any subtopics */
+			goto playlist;
 
 	} else
 		;//mylog(LOG_WARNING, "Unhandled subtopic '%s=%s'", subtopic, value);
