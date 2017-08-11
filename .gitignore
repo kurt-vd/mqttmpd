@@ -1,0 +1,9 @@
+# output
+/mqttmpd
+
+# temp
+*.o
+
+# environment
+/tags
+/config.mk
