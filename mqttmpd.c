@@ -165,6 +165,10 @@ playlist:
 		send_mpd(mpdsock, "clear;load %s;play", value);
 
 	else if (!strncmp(subtopic, "playlist/", 9)) {
+		if (!strcmp("0", value)) {
+			send_mpd(mpdsock, "pause 1");
+			return;
+		}
 		value = subtopic+9;
 		/* this is just a different way of loading a playlist,
 		 * goto is justified
