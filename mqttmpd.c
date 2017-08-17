@@ -14,6 +14,7 @@
 #include <mosquitto.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <netdb.h>
 #include <netinet/in.h>
 
@@ -190,6 +191,27 @@ static void my_exit(void)
 static int connect_uri(const char *host, int port, int preferred_type)
 {
 	int sock;
+
+	if (*host == '@' || *host == '/') {
+		/* unix socket */
+		struct sockaddr_un addr = {
+			.sun_family = AF_UNIX,
+		};
+		int socklen = sizeof(addr);
+
+		strcpy(addr.sun_path, host);
+		if (*host == '@')
+			addr.sun_path[0] = 0;
+		else
+			socklen = strlen(host) + offsetof(struct sockaddr_un, sun_path);
+		sock = socket(AF_UNIX, preferred_type, 0);
+		if (sock < 0)
+			mylog(LOG_ERR, "socket AF_UNIX ...: %s", ESTR(errno));
+		if (connect(sock, (void *)&addr, socklen) < 0)
+			mylog(LOG_ERR, "bind %s: %s", host, ESTR(errno));
+		return sock;
+	}
+
 	struct addrinfo hints = {
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = preferred_type,
