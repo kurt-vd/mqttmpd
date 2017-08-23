@@ -138,6 +138,9 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 {
 	char *subtopic, *value;
 
+	if (msg->retain)
+		/* ignore retained msgs */
+		return;
 	/* we don't receive any messsages outside topicroot/ */
 	subtopic = msg->topic + topicrootlen + 1;
 	value = msg->payload ?: "";
