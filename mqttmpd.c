@@ -188,7 +188,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			}
 		}
 	} else if (!strcmp(subtopic, "volume/set"))
-		send_mpd(mpdsock, "setvol %s", value);
+		send_mpd(mpdsock, "setvol %.0lf", strtod(value, NULL)*100);
 
 	else if (!strcmp(subtopic, "random/set"))
 		send_mpd(mpdsock, "random %s", value);
@@ -461,6 +461,7 @@ int main(int argc, char *argv[])
 		}
 		if (pf[1].revents) {
 			char *tok, *topic, *saved, *value, **pcache;
+			char valbuf[32];
 			__attribute__((unused))
 			char *outputname, outputid[32];
 
@@ -485,6 +486,9 @@ int main(int argc, char *argv[])
 				if (!strcmp(tok, "state")) {
 					tok = "play";
 					value = !strcmp(value, "play") ? "1" : "0";
+				} else if (!strcmp(tok, "volume")) {
+					sprintf(valbuf, "%.2lf", strtoul(value, 0, 10)/100.0);
+					value = valbuf;
 				}
 				if (strpresent(tok, hideprops))
 					continue;
