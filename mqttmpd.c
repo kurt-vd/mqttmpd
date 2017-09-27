@@ -91,6 +91,12 @@ static int mpdncmds;
 /* Keep last requested playlist */
 static char *lastreqplaylist;
 
+/* random playlist chooser data */
+static char **pltable;
+static int pltablesize;
+static int pltablefill;
+static int pltablelisten;
+
 /* MQTT iface */
 static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const char *str)
 {
@@ -226,7 +232,21 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	else if (!strcmp(subtopic, "repeat/set"))
 		send_mpd(mpdsock, "repeat %s", value);
 
-	else if (!strcmp(subtopic, "playlist/set"))
+	else if (!strcmp(subtopic, "playlist/choose1")) {
+		/* issue list-playlist */
+		send_mpd(mpdsock, "listplaylist %s;status", value);
+		/* reset table */
+		pltablefill = 0;
+		pltablelisten = 1;
+
+	} else if (!strcmp(subtopic, "choose1")) {
+		/* issue list-playlist */
+		send_mpd(mpdsock, "list file %s;status", value);
+		/* reset table */
+		pltablefill = 0;
+		pltablelisten = 1;
+
+	} else if (!strcmp(subtopic, "playlist/set")) {
 playlist:
 		send_mpd(mpdsock, "clear;load %s;play", value);
 		playlist_switched(value);
@@ -503,6 +523,8 @@ int main(int argc, char *argv[])
 
 			for (tok = strtok_r(recvbuf, "\n\r", &saved); tok; tok = strtok_r(NULL, "\n\r", &saved)) {
 				if (!strncmp(tok, "OK", 2) || !strncmp(tok, "ACK", 3)) {
+					if (!strncmp(tok, "ACK", 3))
+						mylog(LOG_WARNING, "%s", tok);
 					/* command returned */
 					mpdncmds -= 1;
 					continue;
@@ -513,6 +535,16 @@ int main(int argc, char *argv[])
 
 				/* replace 'state' */
 				if (!strcmp(tok, "state")) {
+					if (pltablelisten && pltablefill) {
+						int idx;
+						/* playlist requested */
+						srand48(time(NULL));
+						idx = drand48()*pltablefill;
+						send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
+						pltablefill = 0;
+					}
+					/* stop recording files */
+					pltablelisten = 0;
 					tok = "play";
 					value = !strcmp(value, "play") ? "1" : "0";
 					if (*value == '0')
@@ -531,6 +563,19 @@ int main(int argc, char *argv[])
 					continue;
 				} else if (!strcmp(tok, "outputenabled")) {
 					tok = outputid;
+				} else if (pltablelisten && !strcmp(tok, "file")) {
+					/* element in playlist info */
+					if (pltablefill >= pltablesize) {
+						pltablesize += 16;
+						pltable = realloc(pltable, pltablesize*sizeof(*pltable));
+						if (!pltable)
+							mylog(LOG_ERR, "realloc failed: %s", ESTR(errno));
+						memset(pltable+pltablefill, 0, (pltablesize-pltablefill)*sizeof(*pltable));
+					}
+					if (pltable[pltablefill])
+						free(pltable[pltablefill]);
+					pltable[pltablefill++] = strdup(value);
+					continue;
 				}
 
 				pcache = propcache(tok);
