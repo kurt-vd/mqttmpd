@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <errno.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -66,6 +67,11 @@ static const char optstring[] = "Vv?m:p:";
 
 /* signal handler */
 static volatile int sigterm;
+
+static void onsigterm(int sig)
+{
+	sigterm = 1;
+}
 
 /* MQTT parameters */
 static const char *mqtt_host = "localhost";
@@ -269,12 +275,6 @@ playlist:
 		;//mylog(LOG_WARNING, "Unhandled subtopic '%s=%s'", subtopic, value);
 }
 
-static void my_exit(void)
-{
-	if (mosq)
-		mosquitto_disconnect(mosq);
-}
-
 static int connect_uri(const char *host, int port, int preferred_type)
 {
 	int sock;
@@ -446,9 +446,11 @@ int main(int argc, char *argv[])
 		topicroot = argv[optind];
 	topicrootlen = strlen(topicroot);
 
-	atexit(my_exit);
 	openlog(NAME, LOG_PERROR, LOG_LOCAL2);
 	setlogmask(logmask);
+
+	signal(SIGTERM, onsigterm);
+	signal(SIGINT, onsigterm);
 
 	/* connect to MPD */
 	mpdsock = connect_uri(mpd_host, mpd_port, SOCK_STREAM);
@@ -485,7 +487,7 @@ int main(int argc, char *argv[])
 
 	mpdncmds = 1; /* expect 'OK MPD ... */
 
-	while (1) {
+	for (; !sigterm;) {
 		/* mosquitto things to do each iteration */
 		ret = mosquitto_loop_misc(mosq);
 		if (ret)
@@ -596,5 +598,16 @@ int main(int argc, char *argv[])
 				send_mpd(mpdsock, "status;currentsong;outputs");
 		}
 	}
+
+	/* destruct, enable for memory debugging */
+	int j;
+	for (j = 0; j < nstate; ++j)
+		free(state[j]);
+	if (state)
+		free(state);
+
+	mosquitto_disconnect(mosq);
+	mosquitto_destroy(mosq);
+	mosquitto_lib_cleanup();
 	return 0;
 }
