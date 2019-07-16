@@ -531,24 +531,27 @@ int main(int argc, char *argv[])
 						mylog(LOG_WARNING, "%s", tok);
 					/* command returned */
 					mpdncmds -= 1;
+					mylog(LOG_INFO, "< '%s'", tok);
 					continue;
 				}
 				value = propvalue(tok);
 				if (!value)
 					continue;
 
-				/* replace 'state' */
-				if (!strcmp(tok, "state")) {
-					if (pltablelisten && pltablefill) {
-						int idx;
-						/* playlist requested */
-						srand48(time(NULL));
-						idx = drand48()*pltablefill;
-						send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
-						pltablefill = 0;
-					}
+				if (pltablefill && strcmp(tok, "file")) {
+					/* playlist request, ended,
+					 * and something else received */
+					int idx;
+					srand48(time(NULL));
+					idx = drand48()*pltablefill;
+					send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
+					pltablefill = 0;
 					/* stop recording files */
 					pltablelisten = 0;
+				}
+				/* replace 'state' */
+				if (!strcmp(tok, "state")) {
+					mylog(LOG_INFO, "< '%s: %s'", tok, value);
 					tok = "play";
 					value = !strcmp(value, "play") ? "1" : "0";
 					if (*value == '0')
