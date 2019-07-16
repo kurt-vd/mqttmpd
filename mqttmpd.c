@@ -193,23 +193,23 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			value = "play";
 		send_mpd(mpdsock, "%s", value);
 
-	} else if (!strcmp(subtopic, "next/set")) {
+	} else if (!strcmp(subtopic, "next")) {
 		if (!strcmp(value, "1"))
 			send_mpd(mpdsock, "next");
 
-	} else if (!strcmp(subtopic, "previous/set")) {
+	} else if (!strcmp(subtopic, "previous")) {
 		if (!strcmp(value, "1"))
 			send_mpd(mpdsock, "previous");
 
-	} else if (!strcmp(subtopic, "clear/set")) {
+	} else if (!strcmp(subtopic, "clear")) {
 		if (!strcmp(value, "1"))
 			send_mpd(mpdsock, "clear");
 
-	} else if (!strcmp(subtopic, "stop/set")) {
+	} else if (!strcmp(subtopic, "stop")) {
 		if (!strcmp(value, "1"))
 			send_mpd(mpdsock, "stop");
 
-	} else if (!strcmp(subtopic, "shuffle/set")) {
+	} else if (!strcmp(subtopic, "shuffle")) {
 		if (!strcmp(value, "1"))
 			send_mpd(mpdsock, "shuffle");
 
