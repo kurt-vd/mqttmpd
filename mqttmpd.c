@@ -148,7 +148,9 @@ static void playlist_switched(const char *value)
 	free(topic);
 }
 
-static int send_mpd(int sock, const char *fmt, ...)
+#define send_mpd(sock, fmt, ...) \
+	sendto_mpd(sock, fmt ";status;currentsong;outputs", ##__VA_ARGS__)
+static int sendto_mpd(int sock, const char *fmt, ...)
 {
 	int ret;
 	char *str, *str2;
@@ -168,7 +170,7 @@ static int send_mpd(int sock, const char *fmt, ...)
 	if (ret < 0)
 		mylog(LOG_ERR, "mpd send '%s' failed: %s", str, ESTR(errno));
 	free(str);
-	mpdncmds += 1;
+	++mpdncmds;
 	mpdidle = 1;
 	return ret;
 }
@@ -595,7 +597,7 @@ int main(int argc, char *argv[])
 
 			if (!mpdncmds)
 				/* schedule new data retrieve */
-				send_mpd(mpdsock, "status;currentsong;outputs");
+				sendto_mpd(mpdsock, "status;currentsong;outputs");
 		}
 	}
 
