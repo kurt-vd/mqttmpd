@@ -398,6 +398,34 @@ static char **propcache(const char *propname)
 	return state+j+1;
 }
 
+/* modified strtok_r that does not return the final part without delimiter
+ * so to avoid cutting half-received lines
+ * remain is guaranteed to be the remaining part
+ */
+static char *mystrtok_r(char *str, const char *delim, char **remain)
+{
+	char *next;
+
+	if (!str)
+		str = *remain;
+	if (!str)
+		return NULL;
+
+	next = strpbrk(str, delim);
+	if (!next) {
+		*remain = str;
+		return NULL;
+	}
+	*next++ = 0;
+	if (!*next)
+		next = NULL;
+	*remain = next;
+	return str;
+
+
+
+}
+
 int main(int argc, char *argv[])
 {
 	int opt, ret;
@@ -488,6 +516,7 @@ int main(int argc, char *argv[])
 	pf[1].events = POLLIN;
 
 	mpdncmds = 1; /* expect 'OK MPD ... */
+	recvbuf[0] = 0;
 
 	for (; !sigterm;) {
 		/* mosquitto things to do each iteration */
@@ -517,15 +546,21 @@ int main(int argc, char *argv[])
 			char valbuf[32];
 			__attribute__((unused))
 			char *outputname, outputid[32];
+			int filled;
 
+			filled = strlen(recvbuf);
+			if (filled >= sizeof(recvbuf)-1)
+				mylog(LOG_ERR, "recv mpd: buffer filled");
+			filled = 0;
 			/* read mpd changes */
-			ret = recv(mpdsock, recvbuf, sizeof(recvbuf)-1, 0);
+			ret = recv(mpdsock, recvbuf+filled, sizeof(recvbuf)-1-filled, 0);
 			if (ret < 0)
 				mylog(LOG_ERR, "recv mpd: %s", ESTR(errno));
 			if (ret == 0)
 				mylog(LOG_ERR, "recv mpd: closed");
-
-			for (tok = strtok_r(recvbuf, "\n\r", &saved); tok; tok = strtok_r(NULL, "\n\r", &saved)) {
+			recvbuf[filled+ret] = 0;
+			/* TODO: clear absent state entries */
+			for (tok = mystrtok_r(recvbuf, "\n\r", &saved); tok; tok = mystrtok_r(NULL, "\n\r", &saved)) {
 				if (!strncmp(tok, "OK", 2) || !strncmp(tok, "ACK", 3)) {
 					if (!strncmp(tok, "ACK", 3))
 						mylog(LOG_WARNING, "%s", tok);
@@ -597,6 +632,8 @@ int main(int argc, char *argv[])
 					free(topic);
 				}
 			}
+			if (saved)
+				memmove(recvbuf, saved, strlen(saved)+1);
 
 			if (!mpdncmds)
 				/* schedule new data retrieve */
