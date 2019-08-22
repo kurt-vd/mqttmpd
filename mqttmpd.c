@@ -94,9 +94,6 @@ static int mpdidle;
 /* Keep number of outstanding cmd's */
 static int mpdncmds;
 
-/* Keep last requested playlist */
-static char *lastreqplaylist;
-
 /* random playlist chooser data */
 static char **pltable;
 static int pltablesize;
@@ -122,30 +119,6 @@ static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const
 			return;
 		}
 	}
-}
-
-static void playlist_switched(const char *value)
-{
-	int ret;
-	char *topic;
-
-	if (lastreqplaylist && strcmp(value ?: "", lastreqplaylist)) {
-		asprintf(&topic, "%s/playlists/%s", topicroot, lastreqplaylist);
-		ret = mosquitto_publish(mosq, NULL, topic, 1, "0", mqtt_qos, 1);
-		if (ret < 0)
-			mylog(LOG_ERR, "mosquitto_publish %s: %s", topic, mosquitto_strerror(ret));
-		free(topic);
-		free(lastreqplaylist);
-		lastreqplaylist = NULL;
-	}
-	if (!value)
-		return;
-	lastreqplaylist = strdup(value);
-	asprintf(&topic, "%s/playlists/%s", topicroot, value);
-	ret = mosquitto_publish(mosq, NULL, topic, 1, "1", mqtt_qos, 1);
-	if (ret < 0)
-		mylog(LOG_ERR, "mosquitto_publish %s: %s", topic, mosquitto_strerror(ret));
-	free(topic);
 }
 
 #define send_mpd(sock, fmt, ...) \
@@ -257,10 +230,8 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 	} else if (!strcmp(subtopic, "playlist/set")) {
 playlist:
 		send_mpd(mpdsock, "clear;load %s;play", value);
-		playlist_switched(value);
-	}
 
-	else if (!strncmp(subtopic, "playlist/", 9)) {
+	} else if (!strncmp(subtopic, "playlist/", 9)) {
 		if (!strcmp("0", value)) {
 			send_mpd(mpdsock, "pause 1");
 			return;
@@ -589,8 +560,6 @@ int main(int argc, char *argv[])
 					mylog(LOG_INFO, "< '%s: %s'", tok, value);
 					tok = "play";
 					value = !strcmp(value, "play") ? "1" : "0";
-					if (*value == '0')
-						playlist_switched(NULL);
 				} else if (!strcmp(tok, "volume")) {
 					sprintf(valbuf, "%.2lf", strtoul(value, 0, 10)/100.0);
 					value = valbuf;
