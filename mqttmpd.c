@@ -309,15 +309,6 @@ static int connect_uri(const char *host, int port, int preferred_type)
 	return sock;
 }
 
-static const char *const changes[] = {
-	"player",
-	"mixer",
-	"options",
-	"output",
-	"playlist",
-	NULL,
-};
-
 static const char *const hideprops[] = {
 	"changed",
 	NULL,
