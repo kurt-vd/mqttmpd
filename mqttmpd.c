@@ -148,6 +148,36 @@ static int sendto_mpd(int sock, const char *fmt, ...)
 	return ret;
 }
 
+static const char *modifiers_to_cmds(const char *mods)
+{
+	static char buf[1024];
+	char *str;
+
+	if (!mods)
+		return "";
+	str = buf;
+	*str = 0;
+	for (; *mods; ++mods)
+	switch (*mods) {
+	case 'c':
+	case 'C':
+		str += sprintf(str, ";consume %i", !isupper(*mods));
+		break;
+	case 'z':
+	case 'Z':
+		str += sprintf(str, ";random %i", !isupper(*mods));
+		break;
+	case 'r':
+	case 'R':
+		str += sprintf(str, ";repeat %i", !isupper(*mods));
+		break;
+	case 's':
+		str += sprintf(str, ";shuffle");
+		break;
+	}
+	return buf;
+}
+
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	char *subtopic, *value;
@@ -228,8 +258,18 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		pltablelisten = 1;
 
 	} else if (!strcmp(subtopic, "playlist/set")) {
-playlist:
-		send_mpd(mpdsock, "clear;load %s;play", value);
+playlist:;
+		char *mods;
+
+		mods = strchr(value, ',');
+		if (mods) {
+			/* cut string */
+			*mods++ = 0;
+			/* create commands */
+			mods = (char *)modifiers_to_cmds(mods);
+		}
+
+		send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
 
 	} else if (!strncmp(subtopic, "playlist/", 9)) {
 		if (!strcmp("0", value)) {
