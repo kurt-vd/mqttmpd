@@ -121,6 +121,28 @@ static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const
 	}
 }
 
+__attribute__((format(printf,3,4)))
+static void mymqttpub(const char *topic, int retain, const char *fmt, ...)
+{
+	int ret;
+	va_list va;
+	char *fulltopic, *payload = NULL;
+
+	if (fmt) {
+		va_start(va, fmt);
+		vasprintf(&payload, fmt, va);
+		va_end(va);
+	}
+
+	asprintf(&fulltopic, "%s/%s", topicroot, topic);
+
+	ret = mosquitto_publish(mosq, NULL, fulltopic, strlen(payload ?: ""), payload, mqtt_qos, retain);
+	if (ret < 0)
+		mylog(LOG_ERR, "mosquitto_publish %s: %s", fulltopic, mosquitto_strerror(ret));
+	free(fulltopic);
+	free(payload);
+}
+
 #define send_mpd(sock, fmt, ...) \
 	sendto_mpd(sock, fmt ";status;currentsong;outputs", ##__VA_ARGS__)
 static int sendto_mpd(int sock, const char *fmt, ...)
@@ -544,7 +566,7 @@ int main(int argc, char *argv[])
 				mylog(LOG_ERR, "mosquitto_loop_read: %s", mosquitto_strerror(ret));
 		}
 		if (pf[1].revents) {
-			char *tok, *topic, *saved, *value, **pcache;
+			char *tok, *saved, *value, **pcache;
 			char valbuf[32];
 			__attribute__((unused))
 			char *outputname, outputid[32];
@@ -625,11 +647,7 @@ int main(int argc, char *argv[])
 					free(*pcache);
 					*pcache = strdup(value);
 					/* publish */
-					asprintf(&topic, "%s/%s", topicroot, tok);
-					ret = mosquitto_publish(mosq, NULL, topic, strlen(value), value, mqtt_qos, 1);
-					if (ret < 0)
-						mylog(LOG_ERR, "mosquitto_publish %s: %s", topic, mosquitto_strerror(ret));
-					free(topic);
+					mymqttpub(tok, 1, value);
 				}
 			}
 			if (saved)
