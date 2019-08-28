@@ -292,6 +292,7 @@ playlist:;
 		}
 
 		send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
+		mymqttpub("playlist", 0, value);
 
 	} else if (!strncmp(subtopic, "playlist/", 9)) {
 		if (!strcmp("0", value)) {
