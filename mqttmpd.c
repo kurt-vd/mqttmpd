@@ -100,6 +100,10 @@ static int pltablesize;
 static int pltablefill;
 static int pltablelisten;
 
+/* iterate playlist state */
+static char *plsel;
+static time_t plselt;
+
 /* MQTT iface */
 static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const char *str)
 {
@@ -201,6 +205,25 @@ static const char *modifiers_to_cmds(const char *mods)
 	return buf;
 }
 
+static char **tokenize(char *str, const char *sep)
+{
+	char **a = NULL;
+	int n = 0, s = 0;
+	char *tok;
+
+	for (tok = strtok(str, sep); tok; tok = strtok(NULL, sep)) {
+		if (n+1 >= s) {
+			s += 16;
+			a = realloc(a, sizeof(*a)*s);
+			if (!a)
+				mylog(LOG_ERR, "realloc %u char *: %s", s, ESTR(errno));
+		}
+		a[n++] = tok;
+	}
+	a[n] = NULL;
+	return a;
+}
+
 static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitto_message *msg)
 {
 	char *subtopic, *value;
@@ -282,6 +305,58 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 
 	} else if (!strcmp(subtopic, "playlist/set")) {
 playlist:;
+		if (strchr(value, ' ')) {
+			char **pls, **it;
+			time_t now;
+
+			now = time(NULL);
+			if ((now - plselt) > 10 && plsel) {
+				/* stop last selected playing song */
+				mylog(LOG_NOTICE, "stop playlist '%s'", plsel);
+				free(plsel);
+				plsel = NULL;
+				mymqttpub("playlist/selected", 0, NULL);
+				send_mpd(mpdsock, "stop");
+				return;
+			}
+			/* choose 1 of the list */
+			pls = tokenize(value, " \t");
+			if (!pls || !*pls) {
+				mylog(LOG_WARNING, "empty playlist selection provide");
+				return;
+			}
+
+			/* lookup last playlist */
+			for (it = pls; *it; ++it)
+				if (!strcmp(*it, plsel ?: ""))
+					break;
+			if (*it) {
+				/* take next (may be beyond list) */
+				++it;
+				if (!*it) {
+					/* went past the list */
+					mylog(LOG_NOTICE, "no more playlists to choose");
+					free(plsel);
+					plsel = NULL;
+					mymqttpub("playlist/selected", 0, NULL);
+					send_mpd(mpdsock, "stop");
+					return;
+				}
+			}
+			if (!*it)
+				/* take first again,
+				 * either the last was not in the list
+				 * or it was the last in the list
+				 */
+				it = pls;
+			value = *it;
+			mylog(LOG_NOTICE, "select playlist '%s' -> '%s'", plsel, value);
+			if (plsel)
+				free(plsel);
+			plsel = strdup(value);
+			plselt = now;
+			mymqttpub("playlist/selected", 0, value);
+		}
 		char *mods;
 
 		mods = strchr(value, ',');
@@ -295,6 +370,8 @@ playlist:;
 		send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
 		mymqttpub("playlist", 0, value);
 
+	} else if (!strcmp(subtopic, "playlist/selected")) {
+		/* ignore this, 'selected' is not a possible playlist */
 	} else if (!strncmp(subtopic, "playlist/", 9)) {
 		if (!strcmp("0", value)) {
 			send_mpd(mpdsock, "pause 1");
@@ -615,6 +692,11 @@ int main(int argc, char *argv[])
 					//mylog(LOG_INFO, "< '%s: %s'", tok, value);
 					tok = "play";
 					value = !strcmp(value, "play") ? "1" : "0";
+					if (*value != '1' && plsel) {
+						/* clear selected playlist info */
+						free(plsel);
+						plsel = NULL;
+					}
 				} else if (!strcmp(tok, "volume")) {
 					sprintf(valbuf, "%.2lf", strtoul(value, 0, 10)/100.0);
 					value = valbuf;
