@@ -108,7 +108,7 @@ static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const
 		MOSQ_LOG_WARNING, LOG_WARNING,
 		MOSQ_LOG_NOTICE, LOG_NOTICE,
 		MOSQ_LOG_INFO, LOG_INFO,
-		MOSQ_LOG_DEBUG, LOG_DEBUG,
+		//MOSQ_LOG_DEBUG, LOG_DEBUG,
 		0,
 	};
 	int j;
@@ -156,6 +156,7 @@ static int sendto_mpd(int sock, const char *fmt, ...)
 	va_end(va);
 	asprintf(&str, "%scommand_list_begin;%s;idle;command_list_end;", mpdidle ? "noidle;" : "", str2);
 	free(str2);
+	mylog(LOG_INFO, "> '%s'", str);
 	/* replace ; with \n */
 	for (str2 = str; *str2; ++str2)
 		if (*str2 == ';')
@@ -611,7 +612,7 @@ int main(int argc, char *argv[])
 				}
 				/* replace 'state' */
 				if (!strcmp(tok, "state")) {
-					mylog(LOG_INFO, "< '%s: %s'", tok, value);
+					//mylog(LOG_INFO, "< '%s: %s'", tok, value);
 					tok = "play";
 					value = !strcmp(value, "play") ? "1" : "0";
 				} else if (!strcmp(tok, "volume")) {
