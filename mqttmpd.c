@@ -303,13 +303,13 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		pltablefill = 0;
 		pltablelisten = 1;
 
-	} else if (!strcmp(subtopic, "playlist/set")) {
-playlist:;
+	} else if (!strcmp(subtopic, "playlist/select")) {
+		time_t now;
+
+		time(&now);
+
 		if (strchr(value, ' ')) {
 			char **pls, **it;
-			time_t now;
-
-			now = time(NULL);
 			if ((now - plselt) > 10 && plsel) {
 				/* stop last selected playing song */
 				mylog(LOG_NOTICE, "stop playlist '%s'", plsel);
@@ -350,13 +350,25 @@ playlist:;
 				 */
 				it = pls;
 			value = *it;
-			mylog(LOG_NOTICE, "select playlist '%s' -> '%s'", plsel, value);
-			if (plsel)
-				free(plsel);
-			plsel = strdup(value);
-			plselt = now;
 			mymqttpub("playlist/selected", 0, value);
+
+		} else {
+			if (plsel) {
+				free(plsel);
+				plsel = NULL;
+				send_mpd(mpdsock, "stop");
+				return;
+			}
 		}
+		mylog(LOG_NOTICE, "select playlist '%s' -> '%s'", plsel ?: "", value);
+		if (plsel)
+			free(plsel);
+		plsel = strdup(value);
+		plselt = now;
+		goto playlist;
+
+	} else if (!strcmp(subtopic, "playlist/set")) {
+playlist:;
 		char *mods;
 
 		mods = strchr(value, ',');
@@ -368,7 +380,6 @@ playlist:;
 		}
 
 		send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
-		mymqttpub("playlist", 0, value);
 
 	} else if (!strcmp(subtopic, "playlist/selected")) {
 		/* ignore this, 'selected' is not a possible playlist */
