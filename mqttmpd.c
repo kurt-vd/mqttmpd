@@ -104,6 +104,9 @@ static int pltablelisten;
 static char *plsel;
 static time_t plselt;
 
+static int playing;
+static time_t playingt;
+
 /* MQTT iface */
 static void my_mqtt_log(struct mosquitto *mosq, void *userdata, int level, const char *str)
 {
@@ -708,6 +711,8 @@ int main(int argc, char *argv[])
 						free(plsel);
 						plsel = NULL;
 					}
+					playing = *value == '1';
+					playingt = time(NULL);
 				} else if (!strcmp(tok, "volume")) {
 					sprintf(valbuf, "%.2lf", strtoul(value, 0, 10)/100.0);
 					value = valbuf;
