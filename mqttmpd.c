@@ -313,6 +313,11 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 
 		if (strchr(value, ' ')) {
 			char **pls, **it;
+			if (plsel && !playing && (now - playingt) > 10) {
+				/* clear plsel cache if mpd stopped more than 10s ago */
+				free(plsel);
+				plsel = NULL;
+			}
 			if ((now - plselt) > 10 && plsel) {
 				/* stop last selected playing song */
 				mylog(LOG_NOTICE, "stop playlist '%s'", plsel);
@@ -706,11 +711,6 @@ int main(int argc, char *argv[])
 					//mylog(LOG_INFO, "< '%s: %s'", tok, value);
 					tok = "play";
 					value = !strcmp(value, "play") ? "1" : "0";
-					if (*value != '1' && plsel) {
-						/* clear selected playlist info */
-						free(plsel);
-						plsel = NULL;
-					}
 					playing = *value == '1';
 					playingt = time(NULL);
 				} else if (!strcmp(tok, "volume")) {
