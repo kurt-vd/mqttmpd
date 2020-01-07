@@ -43,7 +43,7 @@ static const char help_msg[] =
 	"Options\n"
 	" -V, --version		Show version\n"
 	" -v, --verbose		Be more verbose\n"
-	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
+	" -m, --mqtt=[user[:pass]@]HOST[:PORT] Specify alternate MQTT user,pass,host,port\n"
 	" -p, --mpd=HOST[:PORT] Specify alternate MPD host+port\n"
 	"\n"
 	"Paramteres\n"
@@ -625,6 +625,14 @@ int main(int argc, char *argv[])
 
 	mosquitto_log_callback_set(mosq, my_mqtt_log);
 	mosquitto_message_callback_set(mosq, my_mqtt_msg);
+
+	if (mquri.user || mquri.pass) {
+		ret = mosquitto_username_pw_set(mosq, mquri.user, mquri.pass);
+		if (ret)
+			mylog(LOG_ERR, "mosquitto_username_pw_set(%s, %s): %s",
+					mquri.user ?: "NULL", mquri.pass ? "***" : "NULL",
+					mosquitto_strerror(ret));
+	}
 
 	ret = mosquitto_connect(mosq, mquri.host ?: "localhost",
 			mquri.port ?: mqtt_default_port, mqtt_keepalive);
