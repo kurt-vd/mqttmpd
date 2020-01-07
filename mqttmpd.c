@@ -19,6 +19,8 @@
 #include <netdb.h>
 #include <netinet/in.h>
 
+#include "lib/liburi.h"
+
 #define NAME "mqttmpd"
 #ifndef VERSION
 #define VERSION "<undefined version>"
@@ -74,16 +76,16 @@ static void onsigterm(int sig)
 }
 
 /* MQTT parameters */
-static const char *mqtt_host = "localhost";
-static int mqtt_port = 1883;
+static const char *mqtt_uri = "localhost";
+static int mqtt_default_port = 1883;
 static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
 static const char *topicroot = "mpd";
 static int topicrootlen = 3;
 
 /* MPD parameters */
-static const char *mpd_host = "localhost";
-static int mpd_port = 6600;
+static const char *mpd_uri = "localhost";
+static int mpd_default_port = 6600;
 
 /* state */
 static struct mosquitto *mosq;
@@ -408,7 +410,7 @@ playlist:;
 		;//mylog(LOG_WARNING, "Unhandled subtopic '%s=%s'", subtopic, value);
 }
 
-static int connect_uri(const char *host, int port, int preferred_type)
+static int connect_uri(const char *host, int default_port, int preferred_type)
 {
 	int sock;
 
@@ -432,6 +434,10 @@ static int connect_uri(const char *host, int port, int preferred_type)
 		return sock;
 	}
 
+	struct uri uri = {};
+
+	lib_parse_uri(host, &uri);
+
 	struct addrinfo hints = {
 		.ai_family = AF_UNSPEC,
 		.ai_socktype = preferred_type,
@@ -440,14 +446,15 @@ static int connect_uri(const char *host, int port, int preferred_type)
 	}, *paddr = NULL, *ai;
 	char portstr[32];
 
-	sprintf(portstr, "%u", port);
+	sprintf(portstr, "%u", uri.port ?: default_port);
 #ifdef AI_NUMERICSERV
 	hints.ai_flags |= AI_NUMERICSERV;
 #endif
 	/* resolve host to IP */
-	if (getaddrinfo(host, portstr, &hints, &paddr) < 0) {
-		mylog(LOG_WARNING, "getaddrinfo %s %s: %s", host, portstr, ESTR(errno));
-		return -1;
+	if (getaddrinfo(uri.host ?: "localhost", portstr, &hints, &paddr) < 0) {
+		mylog(LOG_WARNING, "getaddrinfo %s %s: %s", uri.host, portstr, ESTR(errno));
+		sock = -1;
+		goto ready;
 	}
 	/* create socket */
 	for (ai = paddr; ai; ai = ai->ai_next) {
@@ -463,9 +470,11 @@ static int connect_uri(const char *host, int port, int preferred_type)
 	if (!ai) {
 		/* no more addrinfo left over */
 		sock = -1;
-		mylog(LOG_WARNING, "connect %s:%u failed: %s", host, port, ESTR(errno));
+		mylog(LOG_WARNING, "connect %s:%u failed: %s", uri.host, uri.port ?: default_port, ESTR(errno));
 	}
 	freeaddrinfo(paddr);
+ready:
+	lib_clean_uri(&uri);
 	return sock;
 }
 
@@ -574,16 +583,10 @@ int main(int argc, char *argv[])
 		}
 		break;
 	case 'm':
-		mqtt_host = optarg;
-		str = strrchr(optarg, ':');
-		if (str > mqtt_host && *(str-1) != ']') {
-			/* TCP port provided */
-			*str = 0;
-			mqtt_port = strtoul(str+1, NULL, 10);
-		}
+		mqtt_uri = optarg;
 		break;
 	case 'p':
-		mpd_host = optarg;
+		mpd_uri = optarg;
 		break;
 
 	default:
@@ -605,11 +608,14 @@ int main(int argc, char *argv[])
 	signal(SIGINT, onsigterm);
 
 	/* connect to MPD */
-	mpdsock = connect_uri(mpd_host, mpd_port, SOCK_STREAM);
+	mpdsock = connect_uri(mpd_uri, mpd_default_port, SOCK_STREAM);
 	if (mpdsock < 0)
 		exit(1);
 
 	/* MQTT start */
+	struct uri mquri = {};
+	lib_parse_uri(mqtt_uri, &mquri);
+
 	mosquitto_lib_init();
 	sprintf(mqtt_name, "%s-%i", NAME, getpid());
 	mosq = mosquitto_new(mqtt_name, true, 0);
@@ -620,9 +626,13 @@ int main(int argc, char *argv[])
 	mosquitto_log_callback_set(mosq, my_mqtt_log);
 	mosquitto_message_callback_set(mosq, my_mqtt_msg);
 
-	ret = mosquitto_connect(mosq, mqtt_host, mqtt_port, mqtt_keepalive);
+	ret = mosquitto_connect(mosq, mquri.host ?: "localhost",
+			mquri.port ?: mqtt_default_port, mqtt_keepalive);
 	if (ret)
-		mylog(LOG_ERR, "mosquitto_connect %s:%i: %s", mqtt_host, mqtt_port, mosquitto_strerror(ret));
+		mylog(LOG_ERR, "mosquitto_connect %s:%i: %s", mquri.host ?: "localhost",
+				mquri.port ?: mqtt_default_port, mosquitto_strerror(ret));
+
+	lib_clean_uri(&mquri);
 
 	/* SUBSCRIBE */
 	asprintf(&str, "%s/#", topicroot);
