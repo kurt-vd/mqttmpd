@@ -584,6 +584,12 @@ int main(int argc, char *argv[])
 		break;
 	case 'p':
 		mpd_host = optarg;
+		str = strrchr(optarg, ':');
+		if (str > mpd_host && *(str-1) != ']') {
+			/* TCP port provided */
+			*str = 0;
+			mpd_port = strtoul(str+1, NULL, 10);
+		}
 		break;
 
 	default:
