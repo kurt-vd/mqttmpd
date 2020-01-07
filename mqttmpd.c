@@ -39,10 +39,12 @@ static const char help_msg[] =
 	"usage:	" NAME " [OPTIONS ...] [TOPIC]\n"
 	"\n"
 	"Options\n"
-	" -V, --version		Show version\n"
-	" -v, --verbose		Be more verbose\n"
-	" -m, --mqtt=HOST[:PORT]Specify alternate MQTT host+port\n"
-	" -p, --mpd=HOST[:PORT] Specify alternate MPD host+port\n"
+	" -V, 			Show version\n"
+	" -v, 			Be more verbose\n"
+	" -m HOST[:PORT]	Specify alternate MQTT host+port\n"
+	" -u			Specify MQTT user\n"
+	" -P			Specify MQTT password\n"
+	" -p HOST[:PORT] 	Specify alternate MPD host+port\n"
 	"\n"
 	"Paramteres\n"
 	" TOPIC		The root topic to publish MPD topics\n"
@@ -56,6 +58,8 @@ static struct option long_opts[] = {
 	{ "verbose", no_argument, NULL, 'v', },
 
 	{ "mqtt", required_argument, NULL, 'm', },
+	{ "mqtt_user", required_argument, NULL, 'u', },
+	{ "mqtt_password", required_argument, NULL, 'P', },
 	{ "mpd", required_argument, NULL, 'p', },
 	{ },
 };
@@ -63,7 +67,7 @@ static struct option long_opts[] = {
 #define getopt_long(argc, argv, optstring, longopts, longindex) \
 	getopt((argc), (argv), (optstring))
 #endif
-static const char optstring[] = "Vv?m:p:";
+static const char optstring[] = "Vv?m:p:u:P:";
 
 /* signal handler */
 static volatile int sigterm;
@@ -80,6 +84,8 @@ static int mqtt_keepalive = 10;
 static int mqtt_qos = 1;
 static const char *topicroot = "mpd";
 static int topicrootlen = 3;
+static const char *mqtt_user = NULL;
+static const char *mqtt_password = NULL;
 
 /* MPD parameters */
 static const char *mpd_host = "localhost";
@@ -582,6 +588,15 @@ int main(int argc, char *argv[])
 			mqtt_port = strtoul(str+1, NULL, 10);
 		}
 		break;
+
+	case 'u':
+		mqtt_user = optarg;
+		break;
+
+	case 'P':
+		mqtt_password = optarg;
+		break;
+
 	case 'p':
 		mpd_host = optarg;
 		str = strrchr(optarg, ':');
@@ -625,6 +640,12 @@ int main(int argc, char *argv[])
 
 	mosquitto_log_callback_set(mosq, my_mqtt_log);
 	mosquitto_message_callback_set(mosq, my_mqtt_msg);
+
+	if (mqtt_user != NULL || mqtt_password != NULL) {
+		ret = mosquitto_username_pw_set(mosq, mqtt_user, mqtt_password);
+		if (ret)
+			mylog(LOG_ERR, "mosquitto_login failed (user: %s) %s.", mqtt_user, mosquitto_strerror(ret));
+	}
 
 	ret = mosquitto_connect(mosq, mqtt_host, mqtt_port, mqtt_keepalive);
 	if (ret)
