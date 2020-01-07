@@ -20,6 +20,7 @@
 #include <netinet/in.h>
 
 #include "lib/liburi.h"
+#include "lib/libnetrc.h"
 
 #define NAME "mqttmpd"
 #ifndef VERSION
@@ -615,6 +616,10 @@ int main(int argc, char *argv[])
 	/* MQTT start */
 	struct uri mquri = {};
 	lib_parse_uri(mqtt_uri, &mquri);
+
+	if (mquri.user && !mquri.pass)
+		/* lookup password from .netrc */
+		lib_netrc(mquri.host ?: "localhost", &mquri.user, &mquri.pass);
 
 	mosquitto_lib_init();
 	sprintf(mqtt_name, "%s-%i", NAME, getpid());

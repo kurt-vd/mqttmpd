@@ -16,6 +16,7 @@ VERSION := $(shell git describe --tags --always)
 CPPFLAGS += -DVERSION=\"$(VERSION)\"
 
 mqttmpd: \
+	lib/libnetrc.o \
 	lib/liburi.o
 
 install: $(PROGS)
