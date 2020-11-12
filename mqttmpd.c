@@ -508,7 +508,8 @@ static char *propvalue(char *str)
 static char **state;
 static int nstate, sstate; /* used vs. allocated */
 
-static char **propcache(const char *propname)
+#define propcache(name)	propcache2(name, 1)
+static char **propcache2(const char *propname, int create)
 {
 	int j;
 
@@ -516,6 +517,9 @@ static char **propcache(const char *propname)
 		if (!strcmp(propname, state[j]))
 			return state+j+1;
 	}
+	if (!create)
+		return NULL;
+
 	if ((nstate + 2) > sstate) {
 		sstate += 128;
 		state = realloc(state, sstate*sizeof(state[0]));
@@ -529,6 +533,49 @@ static char **propcache(const char *propname)
 	state[j+1] = strdup("");
 	nstate += 2;
 	return state+j+1;
+}
+
+static const char *const songprops[] = {
+	"Title",
+	"Name",
+	"Artist",
+	"Author",
+	"Album",
+	"Track",
+	"Genre",
+	"Date",
+};
+static uint32_t props_seen;
+
+static void prop_seen(const char *tok)
+{
+	int j;
+
+	for (j = 0; j < sizeof(songprops)/sizeof(songprops[0]); ++j) {
+		if (!strcasecmp(tok, songprops[j])) {
+			props_seen |= 1 << j;
+			return;
+		}
+	}
+}
+
+static void flush_unseen_props(void)
+{
+	int j;
+	uint32_t mask;
+	char **pvalue;
+
+	for (j = 0, mask = 1; j < sizeof(songprops)/sizeof(songprops[0]); ++j, mask <<= 1) {
+		if (props_seen & mask)
+			continue;
+		pvalue = propcache2(songprops[j], 0);
+		if (pvalue && *pvalue && **pvalue) {
+			/* clear property */
+			free(*pvalue);
+			*pvalue = NULL;
+			mymqttpub(songprops[j], 1, "%s", "");
+		}
+	}
 }
 
 /* modified strtok_r that does not return the final part without delimiter
@@ -713,6 +760,7 @@ int main(int argc, char *argv[])
 					/* command returned */
 					mpdncmds -= 1;
 					mylog(LOG_INFO, "< '%s'", tok);
+					flush_unseen_props();
 					continue;
 				}
 				value = propvalue(tok);
@@ -764,11 +812,16 @@ int main(int argc, char *argv[])
 						free(pltable[pltablefill]);
 					pltable[pltablefill++] = strdup(value);
 					continue;
+				} else if (!strcmp(tok, "file")) {
+					/* mark all properties as unseen */
+					props_seen = 0;
 				}
 
+				prop_seen(tok);
 				pcache = propcache(tok);
-				if (strcmp(value, *pcache)) {
-					free(*pcache);
+				if (strcmp(value, *pcache ?: "")) {
+					if (*pcache)
+						free(*pcache);
 					*pcache = strdup(value);
 					/* publish */
 					mymqttpub(tok, 1, value);
