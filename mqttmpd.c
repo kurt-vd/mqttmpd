@@ -667,7 +667,7 @@ int main(int argc, char *argv[])
 
 	if (mquri.user && !mquri.pass)
 		/* lookup password from .netrc */
-		lib_netrc(mquri.host ?: "localhost", &mquri.user, &mquri.pass);
+		lib_netrc(mquri.host ?: "localhost", (char **)&mquri.user, (char **)&mquri.pass);
 
 	mosquitto_lib_init();
 	sprintf(mqtt_name, "%s-%i", NAME, getpid());
