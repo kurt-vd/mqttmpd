@@ -368,6 +368,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				free(plsel);
 				plsel = NULL;
 				send_mpd(mpdsock, "stop");
+				mymqttpub("playlist/selected", 0, NULL);
 				return;
 			}
 		}
