@@ -541,6 +541,8 @@ static const char *const songprops[] = {
 	"Artist",
 	"Author",
 	"Album",
+	"AlbumArtist",
+	"Composer",
 	"Track",
 	"Genre",
 	"Date",
