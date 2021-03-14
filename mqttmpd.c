@@ -106,6 +106,8 @@ static int pltablelisten;
 /* iterate playlist state */
 static char *plsel;
 static time_t plselt;
+/* indicate if plsel was selected from a list, or single entry */
+static int plselmulti;
 
 static int playing;
 static time_t playingt;
@@ -362,15 +364,18 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				it = pls;
 			value = *it;
 			mymqttpub("playlist/selected", 0, value);
+			plselmulti = 1;
 
 		} else {
 			if (plsel) {
 				free(plsel);
 				plsel = NULL;
 				send_mpd(mpdsock, "stop");
-				mymqttpub("playlist/selected", 0, NULL);
+				if (plselmulti)
+					mymqttpub("playlist/selected", 0, NULL);
 				return;
 			}
+			plselmulti = 0;
 		}
 		mylog(LOG_NOTICE, "select playlist '%s' -> '%s'", plsel ?: "", value);
 		if (plsel)
