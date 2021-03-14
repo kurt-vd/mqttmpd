@@ -318,6 +318,13 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 
 		if (strchr(value, ' ')) {
 			char **pls, **it;
+			if (!plsel && playing) {
+				/* currently playing, but outside playlist/select */
+				mylog(LOG_NOTICE, "stop playing");
+				send_mpd(mpdsock, "stop");
+				mymqttpub("playlist/selected", 0, NULL);
+				return;
+			}
 			if (plsel && !playing && (now - playingt) > 10) {
 				/* clear plsel cache if mpd stopped more than 10s ago */
 				free(plsel);
@@ -367,6 +374,13 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			plselmulti = 1;
 
 		} else {
+			if (!plsel && playing) {
+				/* currently playing, but outside playlist/select */
+				mylog(LOG_NOTICE, "stop playing");
+				send_mpd(mpdsock, "stop");
+				mymqttpub("playlist/selected", 0, NULL);
+				return;
+			}
 			if (plsel) {
 				free(plsel);
 				plsel = NULL;
