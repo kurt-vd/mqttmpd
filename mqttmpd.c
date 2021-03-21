@@ -102,6 +102,8 @@ static char **pltable;
 static int pltablesize;
 static int pltablefill;
 static int pltablelisten;
+static int pltableaction;
+#define TABLE_CHOOSE1	0
 
 /* iterate playlist state */
 static char *plsel;
@@ -342,6 +344,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		/* reset table */
 		pltablefill = 0;
 		pltablelisten = 1;
+		pltableaction = TABLE_CHOOSE1;
 
 	} else if (!strcmp(subtopic, "choose1")) {
 		/* issue list-playlist */
@@ -349,6 +352,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		/* reset table */
 		pltablefill = 0;
 		pltablelisten = 1;
+		pltableaction = TABLE_CHOOSE1;
 
 	} else if (!strcmp(subtopic, "playlist/select")) {
 		time_t now;
@@ -830,10 +834,12 @@ int main(int argc, char *argv[])
 				if (pltablefill && strcmp(tok, "file")) {
 					/* playlist request, ended,
 					 * and something else received */
-					int idx;
-					srand48(time(NULL));
-					idx = drand48()*pltablefill;
-					send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
+					if (pltableaction == TABLE_CHOOSE1) {
+						int idx;
+						srand48(time(NULL));
+						idx = drand48()*pltablefill;
+						send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
+					}
 					pltablefill = 0;
 					/* stop recording files */
 					pltablelisten = 0;
