@@ -104,6 +104,7 @@ static int pltablefill;
 static int pltablelisten;
 static int pltableaction;
 #define TABLE_CHOOSE1	0
+#define TABLE_PLAY	1
 
 /* iterate playlist state */
 static char *plsel;
@@ -452,8 +453,14 @@ playlist:;
 			/* create commands */
 			mods = (char *)modifiers_to_cmds(mods);
 		}
-
-		send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
+		if (!strncmp(value, "dir:", 4)) {
+			send_mpd(mpdsock, "listall %s%s", value+4, mods ?: "");
+			/* reset table */
+			pltablefill = 0;
+			pltablelisten = 1;
+			pltableaction = TABLE_PLAY;
+		} else
+			send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
 
 	} else if (!strcmp(subtopic, "playlist/selected")) {
 		/* ignore this, 'selected' is not a possible playlist */
@@ -831,6 +838,8 @@ int main(int argc, char *argv[])
 				if (!value)
 					continue;
 
+				if (!strcmp(tok, "directory"))
+					continue;
 				if (pltablefill && strcmp(tok, "file")) {
 					/* playlist request, ended,
 					 * and something else received */
@@ -839,6 +848,15 @@ int main(int argc, char *argv[])
 						srand48(time(NULL));
 						idx = drand48()*pltablefill;
 						send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
+
+					} else if (pltableaction == TABLE_PLAY) {
+						int j;
+						sendto_mpd_pre(mpdsock);
+						sendto_mpd_direct(mpdsock, "clear\n");
+						for (j = 0;j < pltablefill; ++j)
+							sendto_mpd_direct(mpdsock, "add \"%s\"\n", pltable[j]);
+						sendto_mpd_direct(mpdsock, "play\n");
+						sendto_mpd_post(mpdsock);
 					}
 					pltablefill = 0;
 					/* stop recording files */
