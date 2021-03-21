@@ -155,6 +155,45 @@ static void mymqttpub(const char *topic, int retain, const char *fmt, ...)
 	free(payload);
 }
 
+static int sendto_mpd_raw(int sock, const char *str)
+{
+	int ret;
+
+	ret = send(sock, str, strlen(str), MSG_NOSIGNAL);
+	if (ret < 0) {
+		mylog(LOG_ERR, "mpd send '%s' failed: %s", str, ESTR(errno));
+		exit(1);
+	}
+	return ret;
+}
+static inline int sendto_mpd_pre(int sock)
+{
+	if (mpdidle)
+		sendto_mpd_raw(sock, "noidle\n");
+	mpdidle = 0;
+	return sendto_mpd_raw(sock, "command_list_begin\n");
+}
+
+static inline int sendto_mpd_post(int sock)
+{
+	++mpdncmds;
+	mpdidle = 1;
+	return sendto_mpd_raw(sock, "idle\ncommand_list_end\n");
+}
+static int sendto_mpd_direct(int sock, const char *fmt, ...)
+{
+	va_list va;
+	char *str;
+	int ret;
+
+	va_start(va, fmt);
+	vasprintf(&str, fmt,va);
+	va_end(va);
+	ret = sendto_mpd_raw(sock, str);
+	free(str);
+	return ret;
+}
+
 #define send_mpd(sock, fmt, ...) \
 	sendto_mpd(sock, fmt ";status;currentsong;outputs", ##__VA_ARGS__)
 static int sendto_mpd(int sock, const char *fmt, ...)
