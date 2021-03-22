@@ -255,13 +255,56 @@ static const char *modifiers_to_cmds(const char *mods)
 	return buf;
 }
 
+char *strtokquote(char *str, const char *sep)
+{
+	static char *next;
+	char *start, *dst;
+	int quoted = 0;
+	int escaped = 0;
+
+	if (str)
+		next = str;
+	if (!next)
+		return NULL;
+
+	for (start = dst = next; *next; ++next) {
+		if (escaped) {
+			*dst++ = *next;
+			escaped = 0;
+
+		} else if (*next == '\\') {
+			escaped = 1;
+
+		} else if (*next == '"') {
+			quoted = !quoted;
+
+		} else if (quoted) {
+			*dst++ = *next;
+
+		} else if (!strchr(sep, *next)) {
+			*dst++ = *next;
+
+		} else if (dst > start) {
+			/* terminate if we have seperators after token */
+			break;
+		}
+	}
+	*dst = 0;
+	/* skip next seperator */
+	for (; *next && strchr(sep, *next); ++next);
+
+	if (!*next)
+		next = NULL;
+	return start;
+}
+
 static char **tokenize(char *str, const char *sep)
 {
 	char **a = NULL;
 	int n = 0, s = 0;
 	char *tok;
 
-	for (tok = strtok(str, sep); tok; tok = strtok(NULL, sep)) {
+	for (tok = strtokquote(str, sep); tok; tok = strtokquote(NULL, sep)) {
 		if (n+1 >= s) {
 			s += 16;
 			a = realloc(a, sizeof(*a)*s);
