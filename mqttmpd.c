@@ -400,11 +400,20 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 
 	} else if (!strcmp(subtopic, "playlist/select")) {
 		time_t now;
+		static char **pls;
 
 		time(&now);
 
-		if (strchr(value, ' ')) {
-			char **pls, **it;
+		if (pls)
+			free(pls);
+		pls = tokenize(value, " \t");
+		if (!pls || !*pls) {
+			mylog(LOG_WARNING, "empty playlist selection provide");
+			return;
+		}
+		if (pls[1]) {
+			/* >1 items provided */
+			char **it;
 			if (!plsel && playing) {
 				/* currently playing, but outside playlist/select */
 				mylog(LOG_NOTICE, "stop playing");
@@ -424,12 +433,6 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				plsel = NULL;
 				mymqttpub("playlist/selected", 0, NULL);
 				send_mpd(mpdsock, "stop");
-				return;
-			}
-			/* choose 1 of the list */
-			pls = tokenize(value, " \t");
-			if (!pls || !*pls) {
-				mylog(LOG_WARNING, "empty playlist selection provide");
 				return;
 			}
 
@@ -457,7 +460,6 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				 */
 				it = pls;
 			value = *it;
-			free(pls);
 			mymqttpub("playlist/selected", 0, value);
 			plselmulti = 1;
 
@@ -478,6 +480,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				return;
 			}
 			plselmulti = 0;
+			value = pls[0];
 		}
 		mylog(LOG_NOTICE, "select playlist '%s' -> '%s'", plsel ?: "", value);
 		if (plsel)
