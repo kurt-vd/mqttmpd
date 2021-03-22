@@ -454,13 +454,13 @@ playlist:;
 			mods = (char *)modifiers_to_cmds(mods);
 		}
 		if (!strncmp(value, "dir:", 4)) {
-			send_mpd(mpdsock, "listall %s%s", value+4, mods ?: "");
+			send_mpd(mpdsock, "listall \"%s\"%s", value+4, mods ?: "");
 			/* reset table */
 			pltablefill = 0;
 			pltablelisten = 1;
 			pltableaction = TABLE_PLAY;
 		} else
-			send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
+			send_mpd(mpdsock, "clear;load \"%s\"%s;play", value, mods ?: "");
 
 	} else if (!strcmp(subtopic, "playlist/selected")) {
 		/* ignore this, 'selected' is not a possible playlist */
