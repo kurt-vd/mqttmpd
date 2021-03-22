@@ -370,6 +370,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				 */
 				it = pls;
 			value = *it;
+			free(pls);
 			mymqttpub("playlist/selected", 0, value);
 			plselmulti = 1;
 
