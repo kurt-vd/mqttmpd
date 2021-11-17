@@ -102,6 +102,9 @@ static char **pltable;
 static int pltablesize;
 static int pltablefill;
 static int pltablelisten;
+static int pltableaction;
+#define TABLE_CHOOSE1	0
+#define TABLE_PLAY	1
 
 /* iterate playlist state */
 static char *plsel;
@@ -153,6 +156,45 @@ static void mymqttpub(const char *topic, int retain, const char *fmt, ...)
 		mylog(LOG_ERR, "mosquitto_publish %s: %s", fulltopic, mosquitto_strerror(ret));
 	free(fulltopic);
 	free(payload);
+}
+
+static int sendto_mpd_raw(int sock, const char *str)
+{
+	int ret;
+
+	ret = send(sock, str, strlen(str), MSG_NOSIGNAL);
+	if (ret < 0) {
+		mylog(LOG_ERR, "mpd send '%s' failed: %s", str, ESTR(errno));
+		exit(1);
+	}
+	return ret;
+}
+static inline int sendto_mpd_pre(int sock)
+{
+	if (mpdidle)
+		sendto_mpd_raw(sock, "noidle\n");
+	mpdidle = 0;
+	return sendto_mpd_raw(sock, "command_list_begin\n");
+}
+
+static inline int sendto_mpd_post(int sock)
+{
+	++mpdncmds;
+	mpdidle = 1;
+	return sendto_mpd_raw(sock, "idle\ncommand_list_end\n");
+}
+static int sendto_mpd_direct(int sock, const char *fmt, ...)
+{
+	va_list va;
+	char *str;
+	int ret;
+
+	va_start(va, fmt);
+	vasprintf(&str, fmt,va);
+	va_end(va);
+	ret = sendto_mpd_raw(sock, str);
+	free(str);
+	return ret;
 }
 
 #define send_mpd(sock, fmt, ...) \
@@ -213,13 +255,56 @@ static const char *modifiers_to_cmds(const char *mods)
 	return buf;
 }
 
+char *strtokquote(char *str, const char *sep)
+{
+	static char *next;
+	char *start, *dst;
+	int quoted = 0;
+	int escaped = 0;
+
+	if (str)
+		next = str;
+	if (!next)
+		return NULL;
+
+	for (start = dst = next; *next; ++next) {
+		if (escaped) {
+			*dst++ = *next;
+			escaped = 0;
+
+		} else if (*next == '\\') {
+			escaped = 1;
+
+		} else if (*next == '"') {
+			quoted = !quoted;
+
+		} else if (quoted) {
+			*dst++ = *next;
+
+		} else if (!strchr(sep, *next)) {
+			*dst++ = *next;
+
+		} else if (dst > start) {
+			/* terminate if we have seperators after token */
+			break;
+		}
+	}
+	*dst = 0;
+	/* skip next seperator */
+	for (; *next && strchr(sep, *next); ++next);
+
+	if (!*next)
+		next = NULL;
+	return start;
+}
+
 static char **tokenize(char *str, const char *sep)
 {
 	char **a = NULL;
 	int n = 0, s = 0;
 	char *tok;
 
-	for (tok = strtok(str, sep); tok; tok = strtok(NULL, sep)) {
+	for (tok = strtokquote(str, sep); tok; tok = strtokquote(NULL, sep)) {
 		if (n+1 >= s) {
 			s += 16;
 			a = realloc(a, sizeof(*a)*s);
@@ -303,6 +388,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		/* reset table */
 		pltablefill = 0;
 		pltablelisten = 1;
+		pltableaction = TABLE_CHOOSE1;
 
 	} else if (!strcmp(subtopic, "choose1")) {
 		/* issue list-playlist */
@@ -310,14 +396,24 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 		/* reset table */
 		pltablefill = 0;
 		pltablelisten = 1;
+		pltableaction = TABLE_CHOOSE1;
 
 	} else if (!strcmp(subtopic, "playlist/select")) {
 		time_t now;
+		static char **pls;
 
 		time(&now);
 
-		if (strchr(value, ' ')) {
-			char **pls, **it;
+		if (pls)
+			free(pls);
+		pls = tokenize(value, " \t");
+		if (!pls || !*pls) {
+			mylog(LOG_WARNING, "empty playlist selection provide");
+			return;
+		}
+		if (pls[1]) {
+			/* >1 items provided */
+			char **it;
 			if (!plsel && playing) {
 				/* currently playing, but outside playlist/select */
 				mylog(LOG_NOTICE, "stop playing");
@@ -337,12 +433,6 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				plsel = NULL;
 				mymqttpub("playlist/selected", 0, NULL);
 				send_mpd(mpdsock, "stop");
-				return;
-			}
-			/* choose 1 of the list */
-			pls = tokenize(value, " \t");
-			if (!pls || !*pls) {
-				mylog(LOG_WARNING, "empty playlist selection provide");
 				return;
 			}
 
@@ -391,6 +481,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				return;
 			}
 			plselmulti = 0;
+			value = pls[0];
 		}
 		mylog(LOG_NOTICE, "select playlist '%s' -> '%s'", plsel ?: "", value);
 		if (plsel)
@@ -410,8 +501,14 @@ playlist:;
 			/* create commands */
 			mods = (char *)modifiers_to_cmds(mods);
 		}
-
-		send_mpd(mpdsock, "clear;load %s%s;play", value, mods ?: "");
+		if (!strncmp(value, "dir:", 4)) {
+			send_mpd(mpdsock, "listall \"%s\"%s", value+4, mods ?: "");
+			/* reset table */
+			pltablefill = 0;
+			pltablelisten = 1;
+			pltableaction = TABLE_PLAY;
+		} else
+			send_mpd(mpdsock, "clear;load \"%s\"%s;play", value, mods ?: "");
 
 	} else if (!strcmp(subtopic, "playlist/selected")) {
 		/* ignore this, 'selected' is not a possible playlist */
@@ -789,13 +886,26 @@ int main(int argc, char *argv[])
 				if (!value)
 					continue;
 
+				if (!strcmp(tok, "directory"))
+					continue;
 				if (pltablefill && strcmp(tok, "file")) {
 					/* playlist request, ended,
 					 * and something else received */
-					int idx;
-					srand48(time(NULL));
-					idx = drand48()*pltablefill;
-					send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
+					if (pltableaction == TABLE_CHOOSE1) {
+						int idx;
+						srand48(time(NULL));
+						idx = drand48()*pltablefill;
+						send_mpd(mpdsock, "clear;add %s;play", pltable[idx]);
+
+					} else if (pltableaction == TABLE_PLAY) {
+						int j;
+						sendto_mpd_pre(mpdsock);
+						sendto_mpd_direct(mpdsock, "clear\n");
+						for (j = 0;j < pltablefill; ++j)
+							sendto_mpd_direct(mpdsock, "add \"%s\"\n", pltable[j]);
+						sendto_mpd_direct(mpdsock, "play\n");
+						sendto_mpd_post(mpdsock);
+					}
 					pltablefill = 0;
 					/* stop recording files */
 					pltablelisten = 0;
