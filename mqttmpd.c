@@ -289,12 +289,14 @@ char *strtokquote(char *str, const char *sep)
 			break;
 		}
 	}
-	*dst = 0;
 	/* skip next seperator */
 	for (; *next && strchr(sep, *next); ++next);
 
 	if (!*next)
 		next = NULL;
+	/* null-terminate un-escaped string
+	 * it can be equal to escaped string */
+	*dst = 0;
 	return start;
 }
 
