@@ -402,14 +402,14 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 
 	} else if (!strcmp(subtopic, "playlist/select")) {
 		time_t now;
-		static char **pls;
+		char **pls;
 
 		time(&now);
 
-		if (pls)
-			free(pls);
 		pls = tokenize(value, " \t");
 		if (!pls || !*pls) {
+			if (pls)
+				free(pls);
 			mylog(LOG_WARNING, "empty playlist selection provide");
 			return;
 		}
@@ -484,6 +484,7 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			}
 			plselmulti = 0;
 			value = pls[0];
+			free(pls);
 		}
 		mylog(LOG_NOTICE, "select playlist '%s' -> '%s'", plsel ?: "", value);
 		if (plsel)
