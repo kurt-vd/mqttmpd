@@ -337,6 +337,9 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			value = "play";
 		send_mpd(mpdsock, "%s", value);
 
+        } else if (!strcmp(subtopic, "toggle")) {
+                        send_mpd(mpdsock, "pause");
+ 
 	} else if (!strcmp(subtopic, "next")) {
 		if (!strcmp(value, "1"))
 			send_mpd(mpdsock, "next");

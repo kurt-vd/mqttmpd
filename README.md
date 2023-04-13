@@ -28,6 +28,7 @@ is returned to the topic as retained message.
 
 ## writeonly topics
 
+* mpd/toggle            toggle between pause and play
 * mpd/playlist/NAME	1: load playlist
 			0: stop playing
 
