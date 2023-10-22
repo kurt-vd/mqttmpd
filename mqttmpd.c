@@ -416,6 +416,11 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 			mylog(LOG_WARNING, "empty playlist selection provide");
 			return;
 		}
+		if (plsel && !playing && (now - playingt) > 10) {
+			/* clear plsel cache if mpd stopped more than 10s ago */
+			free(plsel);
+			plsel = NULL;
+		}
 		if (pls[1]) {
 			/* >1 items provided */
 			char **it;
@@ -425,11 +430,6 @@ static void my_mqtt_msg(struct mosquitto *mosq, void *dat, const struct mosquitt
 				send_mpd(mpdsock, "stop");
 				mymqttpub("playlist/selected", 0, NULL);
 				return;
-			}
-			if (plsel && !playing && (now - playingt) > 10) {
-				/* clear plsel cache if mpd stopped more than 10s ago */
-				free(plsel);
-				plsel = NULL;
 			}
 			if ((now - plselt) > 10 && plsel) {
 				/* stop last selected playing song */
