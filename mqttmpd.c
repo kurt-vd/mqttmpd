@@ -531,6 +531,16 @@ playlist:;
 			/* only treat a playlist without any subtopics */
 			goto playlist;
 
+	} else if (!strncmp(subtopic, "cfg/", 4)) {
+		subtopic += 4;
+
+		if (!strcmp(subtopic, "loglevel")) {
+			int loglevel = strtoul(value, NULL, 0);
+
+			setlogmask(LOG_UPTO(loglevel));
+			mylog(LOG_NOTICE, "loglevel %i", loglevel);
+		}
+
 	} else
 		;//mylog(LOG_WARNING, "Unhandled subtopic '%s=%s'", subtopic, value);
 }
